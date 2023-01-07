@@ -1,0 +1,153 @@
+---
+title: "Test"
+author: "Emma Chi"
+date: "5/30/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+load("cardiovascular.Rdata")
+source("CrossValidation_RF.R")
+```
+
+```{r}
+X
+```
+
+We will use a mixed level fractional factorial design. The factors that will have three levels in the design of our experiment are:
+
+- ntree
+- nodesize
+- cutoff
+
+As there are 7 factors, this means that we must provide one additional factor for each of the factors with three levels. This means we will have a total of 10 factors total
+
+As such, the three level factors will have variable encoding "A" and "B." 
+
+- A `-` for both `ntreeA` and `ntreeB` indicates 100 trees, A `+` for either `ntreeA` or `ntreeB` indicates 550 trees, A `+` for both `ntreeA` and `ntreeB` indicates 1000 trees.
+
+- A `-` for both `nodesizeA` and `nodesizeB` indicates 1, A `+` for either `nodesizeA` or `nodesizeB` indicates 6, A `+` for both `nodesizeA` and `nodesizeB` indicates 11.
+
+- A `-` for both `cutoffA` and `cutoffB` indicates a value of 0.2, A `+` for either `cutoffA` or `cutoffB` indicates a value of 0.5, A `+` for both `cutoffA` and `cutoffB` indicates 0.8.
+
+```{r}
+library(FrF2)
+frfact.design <- FrF2(nruns = 32, nfactors = 10, randomize = F, factor.names = c("ntreeA", "ntreeB", "replace", "mtry", "nodesizeA", "nodesizeB", "maxnodes", "classwt", "cutoffA", "cutoffB"))
+D.one <- desnum(frfact.design) # Extract the design.
+print(D.one)
+```
+
+```{r}
+cat("Generators of the design \n")
+generators(frfact.design)
+cat("Alias structure \n")
+design.info(frfact.design)$aliased
+cat("Resolution and word length pattern \n")
+design.info(frfact.design)$catlg.entry
+```
+
+```{r}
+library(corrplot)
+X.two <- model.matrix(~(.)^2, data.frame(D.one))
+
+# Create color map on pairwise correlations.
+contrast.vectors.correlations.two <- cor(X.two)
+corrplot(contrast.vectors.correlations.two, type = "full", addgrid.col = "gray",
+         tl.col = "black", tl.srt = 90, method = "color", tl.cex=0.5)
+```
+
+
+# Optimal Design
+
+```{r}
+library(AlgDesign)
+candidate.set <- gen.factorial(levels=2, nVars = 10, 
+                              varNames = c("ntreeA", "ntreeB", "replace", "mtry", "nodesizeA", "nodesizeB", "maxnodes", "classwt", "cutoffA", "cutoffB"))
+alternative.design <- optFederov(~ntreeA + ntreeB + replace + mtry+ nodesizeA + nodesizeB + maxnodes + classwt + cutoffA + cutoffB, candidate.set, nTrials = 35, nRepeats = 100)
+print.data.frame(alternative.design$design)
+```
+
+```{r}
+X.two <- model.matrix(~(.)^2-1, data.frame(alternative.design$design))
+
+# Create color map on pairwise correlations.
+contrast.vectors.correlations.two <- cor(X.two)
+corrplot(contrast.vectors.correlations.two, type = "full", addgrid.col = "gray",
+         tl.col = "black", tl.srt = 90, method = "color", tl.cex=0.5)
+```
+
+
+```{r}
+# Creating argument design from fractional factorial design
+argumentdesign <- data.frame(D.one)
+argumentdesign$ntree[argumentdesign$ntreeA == 1 | argumentdesign$ntreeB == 1] <- 550
+argumentdesign$ntree[argumentdesign$ntreeA == -1 & argumentdesign$ntreeB == -1] <- 100
+argumentdesign$ntree[argumentdesign$ntreeA == 1 & argumentdesign$ntreeB == 1] <- 1000
+
+argumentdesign$nodesize[argumentdesign$nodesizeA == 1 | argumentdesign$nodesizeB == 1] <- 6
+argumentdesign$nodesize[argumentdesign$nodesizeA == -1 & argumentdesign$nodesizeB == -1] <- 1
+argumentdesign$nodesize[argumentdesign$nodesizeA == 1 & argumentdesign$nodesizeB == 1] <- 11
+
+argumentdesign$cutoff[argumentdesign$cutoffA == 1 | argumentdesign$cutoffB == 1] <- 0.5
+argumentdesign$cutoff[argumentdesign$cutoffA == -1 & argumentdesign$cutoffB == -1] <- 0.2
+argumentdesign$cutoff[argumentdesign$cutoffA == 1 & argumentdesign$cutoffB == 1] <- 0.8
+
+argumentdesign$replace[argumentdesign$replace == -1] <- 0
+
+argumentdesign$mtry[argumentdesign$mtry == -1] <- 2
+argumentdesign$mtry[argumentdesign$mtry == 1] <- 6
+
+argumentdesign$maxnodes[argumentdesign$maxnodes == -1] <- 10
+argumentdesign$maxnodes[argumentdesign$maxnodes == 1] <- 1000
+
+argumentdesign$classwt[argumentdesign$classwt == -1] <- 0.5
+argumentdesign$classwt[argumentdesign$classwt == 1] <- 0.9
+
+argumentdesign <- data.frame("ntree" = argumentdesign$ntree, "mtry" = argumentdesign$mtry, "replace" = argumentdesign$replace, "nodesize" = argumentdesign$nodesize, "classwt" = argumentdesign$classwt, "cutoff" = argumentdesign$cutoff, "maxnodes" = argumentdesign$maxnodes)
+```
+
+```{r}
+results <- cv.rf(argumentdesign, y, X)
+```
+
+```{r}
+results
+```
+
+Question 4: Commercial Design
+```{r}
+run <- c(1:22)
+ntree <- c(100, 550, 1000,1000,1000,100, 1000, 100, 100, 100,100, 1000, 100, 550, 100, 1000, 1000, 1000, 100, 1000, 550, 550)
+replace <- c(1, 0, 1, 1, 0, 0,0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1)
+mtry <- c(2, 2, 4, 6, 6, 2, 2, 2, 6, 6, 4, 2, 6, 4, 6, 6, 2, 6, 2, 2, 4, 6)
+nodesize <- c(11, 1, 1, 1, 1, 1, 6, 11, 1, 1, 11, 11, 6, 6, 11, 11, 11, 11, 1, 1, 6, 11)
+maxnodes <- c(10, 10, 10, 1000, 1000, 1000, 10, 10, 10, 10, 1000, 1000, 1000, 505, 505, 10, 1000, 10, 1000, 505, 505, 1000)
+classwt <- c(0.5, 0.5, 0.5, 0.5, 0.9, 0.5, 0.9, 0.9, 0.7, 0.9, 0.9, 0.5, 0.5, 0.7, 0.5, 0.5, 0.7, 0.9, 0.9, 0.9, 0.7, 0.9)
+cutoff <- c(0.8, 0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8, 0.5, 0.8, 0.5, 0.2, 0.5, 0.2, 0.8, 0.2, 0.2, 0.2, 0.8, 0.5, 0.8)
+
+commercial.data <- data.frame("run" = as.factor(run), "ntree" = as.factor(ntree), "replace" = as.factor(replace), "mtry" = as.factor(mtry), "nodesize" = as.factor(nodesize), "maxnodes" = as.factor(maxnodes), "classwt" = as.factor(classwt), "cutoff" = as.factor(cutoff))
+print(commercial.data)
+```
+
+
+```{r}
+candidate.set2 <- gen.factorial(levels=3, nVars = 7, 
+                              varNames = c("ntree", "replace", "mtry", "nodesize", "maxnodes", "classwt", "cutoff"))
+comm.opt <- optFederov(~ntree + replace + mtry + nodesize + maxnodes + classwt + cutoff, candidate.set2, nTrials = 22, nRepeats = 100)
+print.data.frame(comm.opt$design)
+```
+
+```{r}
+library(corrplot)
+X.three <- model.matrix(~(.)^2-1, data.frame(comm.opt$design))
+
+# Create color map on pairwise correlations.
+contrast.vectors.correlations.three <- cor(X.three)
+corrplot(contrast.vectors.correlations.three, type = "full", addgrid.col = "gray",
+         tl.col = "black", tl.srt = 90, method = "color", tl.cex=0.5)
+```
+
