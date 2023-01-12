@@ -1,4 +1,4 @@
-# Exploring Tuning Parameters of Random Forest
+# Random Forest Hyperparameter Tuning for Auxiliary Cardiovascular Data
 
 ## by: Emma Chi, Ben Brill, Cecile Wu
 
